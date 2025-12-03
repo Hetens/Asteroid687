@@ -286,8 +286,20 @@ class AsteroidsEnv(gym.Env):
             reward -= 0.05  # Small penalty for shooting
         
         # Update asteroids
-        for ast in self.asteroids:
+        asteroids_to_remove = []
+        for i, ast in enumerate(self.asteroids):
             ast['pos'] += ast['vel'] * dt
+            
+            # Remove if too far off-screen (beyond a reasonable buffer)
+            # Use a larger buffer than shots since asteroids should wrap around
+            buffer = 500  # pixels
+            if (ast['pos'][0] < -buffer or ast['pos'][0] > self.screen_width + buffer or
+                ast['pos'][1] < -buffer or ast['pos'][1] > self.screen_height + buffer):
+                asteroids_to_remove.append(i)
+        
+        # Remove off-screen asteroids
+        for i in reversed(asteroids_to_remove):
+            self.asteroids.pop(i)
         
         # Update shots
         shots_to_remove = []
