@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "asteroids_env"
+version = "0.1.0"
+description = "Gymnasium environment for the Asteroids game"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "gymnasium>=0.28.0",
+    "pygame>=2.1.0",
+    "numpy>=1.21.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["asteroids_env*"]
