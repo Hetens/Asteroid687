@@ -22,6 +22,7 @@ class AsteroidAvoidEnv(gym.Env):
         N_max (int): Maximum number of asteroid slots
         max_steps (int): Maximum timesteps per episode
         p_spawn (float): Probability of spawning an asteroid per timestep
+        max_lives (int): Maximum number of lives
     """
     
     metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
@@ -43,6 +44,7 @@ class AsteroidAvoidEnv(gym.Env):
         # Asteroid configuration
         self.N_max = 5  # maximum number of asteroids
         self.p_spawn = 0.2  # spawn probability per timestep
+        self.max_lives = 3
         
         # Episode configuration
         self.max_steps = 300
@@ -51,15 +53,16 @@ class AsteroidAvoidEnv(gym.Env):
         self.action_space = spaces.Discrete(3)
         
         # Observation space: 17 floats
-        # 1 (ship_x) + 15 (5 asteroids × 3 values) + 1 (distance_to_goal)
+        # 1 (ship_x) + 15 (5 asteroids × 3 values) + 1 (distance_to_goal) + 1 (lives)
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(17,), dtype=np.float32
+            low=0.0, high=1.0, shape=(18,), dtype=np.float32
         )
         
         # Initialize environment state
         self.ship_x = None
         self.asteroids = None
         self.steps_remaining = None
+        self.lives = self.max_lives
         
         # Rendering configuration
         self.render_mode = render_mode
@@ -78,7 +81,7 @@ class AsteroidAvoidEnv(gym.Env):
         Returns:
             np.ndarray: Observation vector of shape (17,) with normalized values
         """
-        obs = np.zeros(17, dtype=np.float32)
+        obs = np.zeros(18, dtype=np.float32)
         
         # Ship state (1 value)
         obs[0] = self.ship_x / (self.W - 1)
@@ -97,6 +100,9 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Goal progress (1 value)
         obs[16] = self.steps_remaining / self.max_steps
+
+        # Lives (1 value)
+        obs[17] = self.lives / self.max_lives
         
         return obs
     
@@ -113,6 +119,8 @@ class AsteroidAvoidEnv(gym.Env):
         """
         # Seed the random number generator
         super().reset(seed=seed)
+        if self.window is not None:
+            self.window.fill((0,0,0))
         
         # Initialize ship at center
         self.ship_x = self.W // 2
@@ -124,6 +132,9 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Reset episode timer
         self.steps_remaining = self.max_steps
+
+        # Reset lives
+        self.lives = self.max_lives
         
         observation = self.get_observation()
         info = {}
@@ -186,7 +197,11 @@ class AsteroidAvoidEnv(gym.Env):
         # Determine reward and termination
         if collision:
             reward = -100.0
-            terminated = True
+            self.lives -= 1
+            if self.lives <= 0:
+                terminated = True
+            else:
+                terminated = False
         elif self.steps_remaining <= 0:
             reward = 100.0
             terminated = True
@@ -196,7 +211,11 @@ class AsteroidAvoidEnv(gym.Env):
         
         truncated = False
         observation = self.get_observation()
-        info = {}
+        info = {
+            "lives": self.lives,
+            "steps_remaining": self.steps_remaining,
+            "steps_survived": self.max_steps - self.steps_remaining
+        }
         
         if self.render_mode == "human":
             self._render_frame()
@@ -286,6 +305,23 @@ class AsteroidAvoidEnv(gym.Env):
                 (self.WINDOW_WIDTH, y * self.CELL_SIZE),
                 width=1
             )
+
+        # Display Game Progress on the demo window
+        if not pygame.font.get_init():
+            pygame.font.init()
+
+        font = pygame.font.SysFont("Arial", 12)
+        hud_lines = [
+            f"Steps Remaining: {self.steps_remaining}",
+            f"Lives Remaining: {self.lives}",
+        ]
+
+        y_offset = 5
+        for line in hud_lines:
+            text_surface = font.render(line, True, (255, 255, 255))
+            canvas.blit(text_surface, (5, y_offset))
+            y_offset += 15
+
         
         if self.render_mode == "human":
             # Copy canvas to window

@@ -48,6 +48,7 @@ def run_visual_demo():
             print(f"Episode {episode} finished!")
             print(f"  Steps survived: {steps}")
             print(f"  Total reward: {total_reward:.1f}")
+            print(f"  Lives remaining: {env.lives}")
             print(f"  Outcome: {'WON! 🎉' if reward == 100 else 'LOST (collision) 💥'}")
             
             episode += 1
