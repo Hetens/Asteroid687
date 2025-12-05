@@ -52,7 +52,7 @@ class AsteroidAvoidEnv(gym.Env):
         # Action space: 0 = left, 1 = stay, 2 = right
         self.action_space = spaces.Discrete(3)
         
-        # Observation space: 17 floats
+        # Observation space: 18 floats
         # 1 (ship_x) + 15 (5 asteroids × 3 values) + 1 (distance_to_goal) + 1 (lives)
         self.observation_space = spaces.Box(
             low=0.0, high=1.0, shape=(18,), dtype=np.float32
