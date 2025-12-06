@@ -1,6 +1,8 @@
 """
-The agent controls a ship at the bottom of a grid, avoiding falling asteroids
+The agent controls a ship at the bottom of a continuous space, avoiding falling asteroids
 while trying to survive for a specified number of timesteps.
+
+This is a continuous environment where actions control velocity rather than direct movement.
 """
 
 import numpy as np
@@ -11,21 +13,23 @@ from gymnasium import spaces
 
 class AsteroidAvoidEnv(gym.Env):
     """
-    Custom Gymnasium environment for asteroid avoidance.
+    Custom Gymnasium environment for asteroid avoidance (Continuous).
     
-    The ship stays at the bottom row and can move left/right to avoid asteroids
+    The ship stays at the bottom and can accelerate left/right to avoid asteroids
     that fall from the top. The goal is to survive for max_steps timesteps.
     
     Attributes:
-        W (int): Grid width (number of columns)
-        H (int): Grid height (number of rows)
+        W (float): Environment width
+        H (float): Environment height
         N_max (int): Maximum number of asteroid slots
         max_steps (int): Maximum timesteps per episode
         p_spawn (float): Probability of spawning an asteroid per timestep
         max_lives (int): Maximum number of lives
+        min_asteroid_radius (float): Minimum asteroid radius
+        max_asteroid_radius (float): Maximum asteroid radius
     """
     
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 10}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
     
     def __init__(self, render_mode=None):
         """
@@ -36,39 +40,54 @@ class AsteroidAvoidEnv(gym.Env):
         """
         super().__init__()
         
-        # Grid configuration
-        self.W = 7  # grid width
-        self.H = 12  # grid height
-        self.ship_y = 0  # ship always stays on bottom row
+        # Continuous space configuration
+        self.W = 10.0  # environment width
+        self.H = 16.0  # environment height
+        self.ship_y = 0.5  # ship stays near bottom
+        self.ship_radius = 0.4  # ship collision radius
+        
+        # Velocity configuration
+        self.max_velocity = 0.5  # maximum ship velocity
+        self.acceleration_scale = 0.1  # how much action affects velocity
+        self.friction = 0.95  # velocity decay per timestep
         
         # Asteroid configuration
         self.N_max = 5  # maximum number of asteroids
         self.p_spawn = 0.2  # spawn probability per timestep
         self.max_lives = 3
+        self.min_asteroid_radius = 0.3  # minimum asteroid size
+        self.max_asteroid_radius = 0.7  # maximum asteroid size
+        self.asteroid_fall_speed = 0.15  # base fall speed
         
         # Episode configuration
-        self.max_steps = 300
+        self.max_steps = 1000
         
-        # Action space: 0 = left, 1 = stay, 2 = right
-        self.action_space = spaces.Discrete(3)
+        # Action space: continuous acceleration [-1, 1]
+        self.action_space = spaces.Box(
+            low=-1.0, high=1.0, shape=(1,), dtype=np.float32
+        )
         
-        # Observation space: 18 floats
-        # 1 (ship_x) + 15 (5 asteroids × 3 values) + 1 (distance_to_goal) + 1 (lives)
+        # Observation space: 20 floats
+        # 2 (ship_x, ship_velocity) + 15 (5 asteroids × 3 values: x, y, radius) + 1 (distance_to_goal) + 1 (lives) + 1 (present flags packed)
+        # Actually: 2 + 5*4 (x, y, radius, present) = 22, but we'll use:
+        # ship_x, ship_vx, 5*(ast_x, ast_y, ast_radius, ast_present), goal_progress, lives
+        # = 2 + 20 + 2 = 24
         self.observation_space = spaces.Box(
-            low=0.0, high=1.0, shape=(18,), dtype=np.float32
+            low=0.0, high=1.0, shape=(24,), dtype=np.float32
         )
         
         # Initialize environment state
         self.ship_x = None
+        self.ship_vx = None  # ship velocity
         self.asteroids = None
         self.steps_remaining = None
         self.lives = self.max_lives
         
         # Rendering configuration
         self.render_mode = render_mode
-        self.CELL_SIZE = 40  # pixels per grid cell
-        self.WINDOW_WIDTH = self.W * self.CELL_SIZE
-        self.WINDOW_HEIGHT = self.H * self.CELL_SIZE
+        self.SCALE = 40  # pixels per unit
+        self.WINDOW_WIDTH = int(self.W * self.SCALE)
+        self.WINDOW_HEIGHT = int(self.H * self.SCALE)
         
         # PyGame initialization (lazy)
         self.window = None
@@ -79,30 +98,33 @@ class AsteroidAvoidEnv(gym.Env):
         Construct the observation vector from the current state.
         
         Returns:
-            np.ndarray: Observation vector of shape (17,) with normalized values
+            np.ndarray: Observation vector of shape (24,) with normalized values
         """
-        obs = np.zeros(18, dtype=np.float32)
+        obs = np.zeros(24, dtype=np.float32)
         
-        # Ship state (1 value)
-        obs[0] = self.ship_x / (self.W - 1)
+        # Ship state (2 values)
+        obs[0] = self.ship_x / self.W  # normalized x position
+        obs[1] = (self.ship_vx + self.max_velocity) / (2 * self.max_velocity)  # normalized velocity [0, 1]
         
-        # Asteroid states (5 × 3 = 15 values)
+        # Asteroid states (5 × 4 = 20 values)
         for i in range(self.N_max):
-            idx = 1 + i * 3
+            idx = 2 + i * 4
             if self.asteroids[i]['present']:
-                obs[idx] = self.asteroids[i]['x'] / (self.W - 1)  # x_normalized
-                obs[idx + 1] = self.asteroids[i]['y'] / (self.H - 1)  # y_normalized
-                obs[idx + 2] = 1.0  # present
+                obs[idx] = self.asteroids[i]['x'] / self.W  # x_normalized
+                obs[idx + 1] = self.asteroids[i]['y'] / self.H  # y_normalized
+                obs[idx + 2] = (self.asteroids[i]['radius'] - self.min_asteroid_radius) / (self.max_asteroid_radius - self.min_asteroid_radius)  # radius_normalized
+                obs[idx + 3] = 1.0  # present
             else:
                 obs[idx] = 0.0
                 obs[idx + 1] = 0.0
-                obs[idx + 2] = 0.0  # not present
+                obs[idx + 2] = 0.0
+                obs[idx + 3] = 0.0  # not present
         
         # Goal progress (1 value)
-        obs[16] = self.steps_remaining / self.max_steps
+        obs[22] = self.steps_remaining / self.max_steps
 
         # Lives (1 value)
-        obs[17] = self.lives / self.max_lives
+        obs[23] = self.lives / self.max_lives
         
         return obs
     
@@ -120,14 +142,16 @@ class AsteroidAvoidEnv(gym.Env):
         # Seed the random number generator
         super().reset(seed=seed)
         if self.window is not None:
-            self.window.fill((0,0,0))
+            self.window.fill((0, 0, 0))
         
-        # Initialize ship at center
-        self.ship_x = self.W // 2
+        # Initialize ship at center with zero velocity
+        self.ship_x = self.W / 2.0
+        self.ship_vx = 0.0
         
         # Clear all asteroids
         self.asteroids = [
-            {'x': 0, 'y': 0, 'present': False} for _ in range(self.N_max)
+            {'x': 0.0, 'y': 0.0, 'radius': 0.0, 'present': False} 
+            for _ in range(self.N_max)
         ]
         
         # Reset episode timer
@@ -149,27 +173,41 @@ class AsteroidAvoidEnv(gym.Env):
         Execute one timestep of the environment.
         
         Args:
-            action (int): Action to take (0=left, 1=stay, 2=right)
+            action (np.ndarray): Continuous action for acceleration [-1, 1]
         
         Returns:
             tuple: (observation, reward, terminated, truncated, info)
         """
-        # Apply action: move ship
-        if action == 0:  # move left
-            self.ship_x -= 1
-        elif action == 2:  # move right
-            self.ship_x += 1
-        # action == 1: stay (no change)
+        # Extract scalar action
+        acceleration = float(action[0])
+        acceleration = np.clip(acceleration, -1.0, 1.0)
         
-        # Clamp ship position to valid range
-        self.ship_x = np.clip(self.ship_x, 0, self.W - 1)
+        # Apply acceleration to velocity
+        self.ship_vx += acceleration * self.acceleration_scale
+        
+        # Apply friction
+        self.ship_vx *= self.friction
+        
+        # Clamp velocity
+        self.ship_vx = np.clip(self.ship_vx, -self.max_velocity, self.max_velocity)
+        
+        # Update position based on velocity
+        self.ship_x += self.ship_vx
+        
+        # Clamp ship position to valid range and bounce off walls
+        if self.ship_x < self.ship_radius:
+            self.ship_x = self.ship_radius
+            self.ship_vx = abs(self.ship_vx) * 0.5  # bounce with energy loss
+        elif self.ship_x > self.W - self.ship_radius:
+            self.ship_x = self.W - self.ship_radius
+            self.ship_vx = -abs(self.ship_vx) * 0.5  # bounce with energy loss
         
         # Move asteroids down
         for asteroid in self.asteroids:
             if asteroid['present']:
-                asteroid['y'] -= 1
+                asteroid['y'] -= self.asteroid_fall_speed
                 # Remove asteroids that fall off the bottom
-                if asteroid['y'] < 0:
+                if asteroid['y'] + asteroid['radius'] < 0:
                     asteroid['present'] = False
         
         # Spawn new asteroid with probability p_spawn
@@ -177,19 +215,29 @@ class AsteroidAvoidEnv(gym.Env):
             # Find first empty slot
             for asteroid in self.asteroids:
                 if not asteroid['present']:
-                    asteroid['x'] = self.np_random.integers(0, self.W)
-                    asteroid['y'] = self.H - 1
+                    # Random size within limits
+                    radius = self.np_random.uniform(
+                        self.min_asteroid_radius, 
+                        self.max_asteroid_radius
+                    )
+                    asteroid['x'] = self.np_random.uniform(radius, self.W - radius)
+                    asteroid['y'] = self.H + radius  # spawn above screen
+                    asteroid['radius'] = radius
                     asteroid['present'] = True
                     break
         
-        # Check for collision
+        # Check for collision (circle-circle collision detection)
         collision = False
         for asteroid in self.asteroids:
-            if (asteroid['present'] and 
-                asteroid['x'] == self.ship_x and 
-                asteroid['y'] == self.ship_y):
-                collision = True
-                break
+            if asteroid['present']:
+                dist = np.sqrt(
+                    (asteroid['x'] - self.ship_x) ** 2 + 
+                    (asteroid['y'] - self.ship_y) ** 2
+                )
+                if dist < (asteroid['radius'] + self.ship_radius):
+                    collision = True
+                    asteroid['present'] = False  # asteroid is destroyed on hit
+                    break
         
         # Decrement steps remaining
         self.steps_remaining -= 1
@@ -205,8 +253,11 @@ class AsteroidAvoidEnv(gym.Env):
         elif self.steps_remaining <= 0:
             reward = 100.0
             terminated = True
+        elif self.steps_remaining < self.max_steps / 2:
+            reward = 10.0
+            terminated = False
         else:
-            reward = 1.0
+            reward = 0.01
             terminated = False
         
         truncated = False
@@ -232,6 +283,12 @@ class AsteroidAvoidEnv(gym.Env):
         if self.render_mode == "rgb_array":
             return self._render_frame()
     
+    def _world_to_pixel(self, world_x, world_y):
+        """Convert world coordinates to pixel coordinates."""
+        pixel_x = int(world_x * self.SCALE)
+        pixel_y = int((self.H - world_y) * self.SCALE)
+        return pixel_x, pixel_y
+    
     def _render_frame(self):
         """
         Internal rendering method using PyGame.
@@ -246,81 +303,74 @@ class AsteroidAvoidEnv(gym.Env):
             self.window = pygame.display.set_mode(
                 (self.WINDOW_WIDTH, self.WINDOW_HEIGHT)
             )
-            pygame.display.set_caption("Asteroid Avoid Environment")
+            pygame.display.set_caption("Asteroid Avoid Environment (Continuous)")
         
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
         
         # Create canvas
         canvas = pygame.Surface((self.WINDOW_WIDTH, self.WINDOW_HEIGHT))
-        canvas.fill((0, 0, 0))  # Black background
+        canvas.fill((10, 10, 30))  # Dark blue background
         
-        # Convert grid coordinates to pixel coordinates
-        def grid_to_pixel(grid_x, grid_y):
-            pixel_x = grid_x * self.CELL_SIZE
-            pixel_y = (self.H - 1 - grid_y) * self.CELL_SIZE
-            return pixel_x, pixel_y
-        
-        # Draw ship (blue rectangle)
-        ship_pixel_x, ship_pixel_y = grid_to_pixel(self.ship_x, self.ship_y)
-        pygame.draw.rect(
+        # Draw ship (blue circle)
+        ship_pixel_x, ship_pixel_y = self._world_to_pixel(self.ship_x, self.ship_y)
+        ship_pixel_radius = int(self.ship_radius * self.SCALE)
+        pygame.draw.circle(
             canvas,
-            (0, 100, 255),  # Blue
-            pygame.Rect(
-                ship_pixel_x, ship_pixel_y,
-                self.CELL_SIZE, self.CELL_SIZE
-            )
+            (50, 150, 255),  # Blue
+            (ship_pixel_x, ship_pixel_y),
+            ship_pixel_radius
+        )
+        # Ship outline
+        pygame.draw.circle(
+            canvas,
+            (100, 200, 255),  # Lighter blue
+            (ship_pixel_x, ship_pixel_y),
+            ship_pixel_radius,
+            2
         )
         
-        # Draw asteroids (red rectangles)
+        # Draw asteroids (red circles with variable sizes)
         for asteroid in self.asteroids:
             if asteroid['present']:
-                ast_pixel_x, ast_pixel_y = grid_to_pixel(
+                ast_pixel_x, ast_pixel_y = self._world_to_pixel(
                     asteroid['x'], asteroid['y']
                 )
-                pygame.draw.rect(
+                ast_pixel_radius = int(asteroid['radius'] * self.SCALE)
+                # Gradient-like effect based on size
+                intensity = int(150 + 105 * (asteroid['radius'] - self.min_asteroid_radius) / 
+                               (self.max_asteroid_radius - self.min_asteroid_radius))
+                pygame.draw.circle(
                     canvas,
-                    (255, 50, 50),  # Red
-                    pygame.Rect(
-                        ast_pixel_x, ast_pixel_y,
-                        self.CELL_SIZE, self.CELL_SIZE
-                    )
+                    (intensity, 50, 50),  # Red with intensity based on size
+                    (ast_pixel_x, ast_pixel_y),
+                    ast_pixel_radius
                 )
-        
-        # Draw grid lines
-        for x in range(self.W + 1):
-            pygame.draw.line(
-                canvas,
-                (50, 50, 50),  # Dark gray
-                (x * self.CELL_SIZE, 0),
-                (x * self.CELL_SIZE, self.WINDOW_HEIGHT),
-                width=1
-            )
-        
-        for y in range(self.H + 1):
-            pygame.draw.line(
-                canvas,
-                (50, 50, 50),  # Dark gray
-                (0, y * self.CELL_SIZE),
-                (self.WINDOW_WIDTH, y * self.CELL_SIZE),
-                width=1
-            )
+                # Outline
+                pygame.draw.circle(
+                    canvas,
+                    (255, 100, 100),  # Lighter red
+                    (ast_pixel_x, ast_pixel_y),
+                    ast_pixel_radius,
+                    2
+                )
 
         # Display Game Progress on the demo window
         if not pygame.font.get_init():
             pygame.font.init()
 
-        font = pygame.font.SysFont("Arial", 12)
+        font = pygame.font.SysFont("Arial", 14)
         hud_lines = [
             f"Steps Remaining: {self.steps_remaining}",
             f"Lives Remaining: {self.lives}",
+            f"Velocity: {self.ship_vx:.2f}",
         ]
 
         y_offset = 5
         for line in hud_lines:
             text_surface = font.render(line, True, (255, 255, 255))
             canvas.blit(text_surface, (5, y_offset))
-            y_offset += 15
+            y_offset += 18
 
         
         if self.render_mode == "human":
