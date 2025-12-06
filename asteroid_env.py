@@ -41,8 +41,8 @@ class AsteroidAvoidEnv(gym.Env):
         super().__init__()
         
         # Continuous space configuration
-        self.W = 10.0  # environment width
-        self.H = 16.0  # environment height
+        self.W = 9.0  # environment width
+        self.H = 12.0  # environment height
         self.ship_y = 0.5  # ship stays near bottom
         self.ship_radius = 0.4  # ship collision radius
         
@@ -53,10 +53,10 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Asteroid configuration
         self.N_max = 5  # maximum number of asteroids
-        self.p_spawn = 0.2  # spawn probability per timestep
+        self.p_spawn = 0.15  # spawn probability per timestep (easier)
         self.max_lives = 3
         self.min_asteroid_radius = 0.3  # minimum asteroid size
-        self.max_asteroid_radius = 0.7  # maximum asteroid size
+        self.max_asteroid_radius = 0.6  # maximum asteroid size (smaller)
         self.asteroid_fall_speed = 0.15  # base fall speed
         
         # Episode configuration
@@ -226,17 +226,24 @@ class AsteroidAvoidEnv(gym.Env):
                     asteroid['present'] = True
                     break
         
-        # Check for collision (circle-circle collision detection)
+        # Check for collision and calculate minimum distance to asteroids
         collision = False
+        min_distance = float('inf')
+        danger_threshold = 3.0  # distance at which we start caring about proximity
+        
         for asteroid in self.asteroids:
             if asteroid['present']:
                 dist = np.sqrt(
                     (asteroid['x'] - self.ship_x) ** 2 + 
                     (asteroid['y'] - self.ship_y) ** 2
                 )
-                if dist < (asteroid['radius'] + self.ship_radius):
+                # Account for radii to get edge-to-edge distance
+                edge_dist = dist - (asteroid['radius'] + self.ship_radius)
+                min_distance = min(min_distance, edge_dist)
+                
+                if edge_dist < 0:  # collision
                     collision = True
-                    asteroid['present'] = False  # asteroid is destroyed on hit
+                    asteroid['present'] = False
                     break
         
         # Decrement steps remaining
@@ -244,20 +251,25 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Determine reward and termination
         if collision:
-            reward = -100.0
+            reward = -30.0  # Reduced penalty
             self.lives -= 1
-            if self.lives <= 0:
-                terminated = True
-            else:
-                terminated = False
+            terminated = self.lives <= 0
         elif self.steps_remaining <= 0:
-            reward = 100.0
+            reward = 50.0  # win bonus
             terminated = True
-        elif self.steps_remaining < self.max_steps / 2:
-            reward = 10.0
-            terminated = False
         else:
-            reward = 0.01
+            # Base survival reward - must be meaningful!
+            reward = 1.0
+            
+            # Distance-based bonus: reward for staying away from asteroids
+            if min_distance < danger_threshold and min_distance > 0:
+                # Closer = less bonus (scales from 0 to 1 based on distance)
+                distance_bonus = 1.0 * (min_distance / danger_threshold)
+                reward += distance_bonus
+            elif min_distance >= danger_threshold:
+                # Safe distance = full bonus
+                reward += 1.0
+            
             terminated = False
         
         truncated = False
