@@ -1,10 +1,10 @@
-Training Run: 2025-12-08 12:58:42
+Training Run: 2025-12-08 16:25:33
 ==================================================
 
 PPO Hyperparameters:
 Number of parallel environments: 16
 ------------------------------
-total_timesteps: 10000000
+total_timesteps: 5000000
 learning_rate: 0.0003
 n_steps: 1024
 batch_size: 2048
@@ -16,8 +16,3 @@ ent_coef: 0.01
 vf_coef: 0.5
 max_grad_norm: 0.5
 policy: MlpPolicy
-
-==================================================
-Continued Training: 2025-12-08 14:24:00
-From checkpoint: PPO_asteroid_avoid.zip
-Additional timesteps: 15000000

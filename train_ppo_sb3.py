@@ -20,7 +20,7 @@ POLICY = "PPO"
 N_ENVS = 16
 
 HYPERPARAMS = {
-    "total_timesteps": 10_000_000,
+    "total_timesteps": 5_000_000,
     "learning_rate": 3e-4,
     "n_steps": 1024,        
     "batch_size": 2048,     
@@ -132,8 +132,7 @@ def main():
 
     logger = SimpleLogger(os.path.join(LOG_DIR, "training_log.csv"))
 
-    print(f"\n🚀 Starting PPO training...")
-    print(f"Tips: Watch for WinRate in logs. Target: 50%+ for good performance")
+    print(f"\nStarting PPO training...")
 
     model.learn(
         total_timesteps=HYPERPARAMS["total_timesteps"],

@@ -1,0 +1,19 @@
+Training Run: 2025-12-08 16:25:22
+==================================================
+
+TD3 Hyperparameters:
+Number of parallel environments: 8
+------------------------------
+total_timesteps: 5000000
+learning_rate: 0.0003
+batch_size: 256
+buffer_size: 300000
+gamma: 0.97
+tau: 0.005
+train_freq: 4
+gradient_steps: 4
+policy: MlpPolicy
+policy_delay: 2
+target_policy_noise: 0.2
+target_noise_clip: 0.5
+learning_starts: 5000

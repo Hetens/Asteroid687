@@ -119,7 +119,7 @@ class AsteroidAvoidEnv(gym.Env):
         
         return obs
     
-    def reset(self, options=None):
+    def reset(self, seed=None, options=None):
         """
         Reset the environment to start a new episode.
         
@@ -130,7 +130,7 @@ class AsteroidAvoidEnv(gym.Env):
         Returns:
             tuple: (observation, info) for the initial state
         """
-        super().reset()
+        super().reset(seed=seed)
         if self.window is not None:
             self.window.fill((0, 0, 0))
         
@@ -266,9 +266,9 @@ class AsteroidAvoidEnv(gym.Env):
             center_bonus = 0.5 * (1.0 - distance_from_center / (self.W / 2.0))
             reward += center_bonus
             
-            # Reward for moving (not being stationary) -> need a longer training time to see if this is needed
-            movement_reward = 0.3 * min(abs(self.ship_vx) / self.max_velocity, 1.0)
-            reward += movement_reward
+            # # Reward for moving (not being stationary) -> need a longer training time to see if this is needed
+            # movement_reward = 0.3 * min(abs(self.ship_vx) / self.max_velocity, 1.0)
+            # reward += movement_reward
             
             # Distance-based bonus for avoiding asteroids
             if min_distance < danger_threshold and min_distance > 0:
