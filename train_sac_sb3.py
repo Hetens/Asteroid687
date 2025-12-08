@@ -1,6 +1,6 @@
 import os
 import torch
-from stable_baselines3 import PPO
+from stable_baselines3 import SAC
 from stable_baselines3.common.vec_env import SubprocVecEnv
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.monitor import Monitor
@@ -8,25 +8,25 @@ from stable_baselines3.common.monitor import Monitor
 from asteroid_env import AsteroidAvoidEnv
 from utils import SimpleLogger, save_hyperparams, plot_training_results, print_training_summary
 
-LOG_DIR = "./ppo/logs/"
+LOG_DIR = "./sac/logs/"
 os.makedirs(LOG_DIR, exist_ok=True)
 
-POLICY = "PPO"
-N_ENVS = 16
+POLICY = "SAC"
+N_ENVS = 8
 
 HYPERPARAMS = {
     "total_timesteps": 5_000_000,
     "learning_rate": 3e-4,
-    "n_steps": 1024,        
-    "batch_size": 2048,     
-    "n_epochs": 20,         
-    "gamma": 0.99,    
-    "gae_lambda": 0.95,
-    "clip_range": 0.2,
-    "ent_coef": 0.01, 
-    "vf_coef": 0.5,
-    "max_grad_norm": 0.5,
+    "batch_size": 256,
+    "buffer_size": 300_000,
+    "gamma": 0.97,
+    "tau": 0.005,
+    "train_freq": 1,
+    "gradient_steps": 1,
     "policy": "MlpPolicy",
+    "ent_coef": "auto",
+    "target_entropy": "auto",
+    "learning_starts": 5000,
 }
 
 
@@ -43,23 +43,23 @@ def main():
     )
 
     policy_kwargs = dict(
-        net_arch=dict(pi=[512, 512, 256], vf=[512, 512, 256]), 
+        net_arch=dict(pi=[256, 256], qf=[256, 256]),
         activation_fn=torch.nn.ReLU,
     )
 
-    model = PPO(
+    model = SAC(
         HYPERPARAMS["policy"],
         env,
         learning_rate=HYPERPARAMS["learning_rate"],
-        n_steps=HYPERPARAMS["n_steps"],
         batch_size=HYPERPARAMS["batch_size"],
-        n_epochs=HYPERPARAMS["n_epochs"],
+        buffer_size=HYPERPARAMS["buffer_size"],
         gamma=HYPERPARAMS["gamma"],
-        gae_lambda=HYPERPARAMS["gae_lambda"],
-        clip_range=HYPERPARAMS["clip_range"],
+        tau=HYPERPARAMS["tau"],
+        train_freq=HYPERPARAMS["train_freq"],
+        gradient_steps=HYPERPARAMS["gradient_steps"],
         ent_coef=HYPERPARAMS["ent_coef"],
-        vf_coef=HYPERPARAMS["vf_coef"],
-        max_grad_norm=HYPERPARAMS["max_grad_norm"],
+        target_entropy=HYPERPARAMS["target_entropy"],
+        learning_starts=HYPERPARAMS["learning_starts"],
         policy_kwargs=policy_kwargs,
         verbose=1,
         device=device,
@@ -68,7 +68,7 @@ def main():
 
     logger = SimpleLogger(
         os.path.join(LOG_DIR, "training_log.csv"),
-        loss_key='train/value_loss'
+        loss_key='train/critic_loss'
     )
 
     print(f"\nStarting {POLICY} training...")
@@ -81,7 +81,7 @@ def main():
 
     model.save(f"{POLICY}_asteroid_avoid")
     
-    plot_training_results(logger, LOG_DIR, loss_label='Value Loss')
+    plot_training_results(logger, LOG_DIR, loss_label='Critic Loss')
     print_training_summary(logger, POLICY)
 
     env.close()
