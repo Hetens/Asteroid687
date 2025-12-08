@@ -4,7 +4,7 @@ Script to play/visualize a trained policy on the Asteroid Avoid Environment.
 
 import os
 import time
-from stable_baselines3 import TD3, PPO
+from stable_baselines3 import TD3, PPO, SAC
 from asteroid_env import AsteroidAvoidEnv
 
 POLICY = "TD3"
@@ -29,7 +29,14 @@ def main():
     print(f"Loading model from: {model_path}")
     
     env = AsteroidAvoidEnv(render_mode="human")
-    model = PPO.load(model_path, env=env) if POLICY == "PPO" else TD3.load(model_path, env=env)
+    if POLICY == "PPO":
+        model = PPO.load(model_path, env=env)
+    elif POLICY == "TD3":
+        model = TD3.load(model_path, env=env)
+    elif POLICY == "SAC":
+        model = SAC.load(model_path, env=env)
+    else:
+        raise ValueError(f"Invalid policy: {POLICY}")
     
     print("\n" + "="*50)
     print("Playing trained policy...")

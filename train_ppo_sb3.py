@@ -62,7 +62,6 @@ def main():
         max_grad_norm=HYPERPARAMS["max_grad_norm"],
         policy_kwargs=policy_kwargs,
         verbose=1,
-        device=device,
         tensorboard_log=LOG_DIR, 
     )
 

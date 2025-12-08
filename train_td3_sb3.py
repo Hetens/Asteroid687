@@ -73,7 +73,6 @@ def main():
         action_noise=action_noise,
         policy_kwargs=policy_kwargs,
         verbose=1,
-        device=device,
         tensorboard_log=LOG_DIR, 
     )
 

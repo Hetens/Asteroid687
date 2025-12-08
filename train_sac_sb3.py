@@ -62,7 +62,6 @@ def main():
         learning_starts=HYPERPARAMS["learning_starts"],
         policy_kwargs=policy_kwargs,
         verbose=1,
-        device=device,
         tensorboard_log=LOG_DIR, 
     )
 

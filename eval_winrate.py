@@ -1,10 +1,17 @@
 from asteroid_env import AsteroidAvoidEnv
-from stable_baselines3 import TD3, PPO
+from stable_baselines3 import TD3, PPO, SAC
 
 POLICY = "PPO"
 def evaluate_policy(model_path, episodes=100):
     env = AsteroidAvoidEnv(render_mode=None)
-    model = PPO.load(model_path, env=env) if POLICY == "PPO" else TD3.load(model_path, env=env)
+    if POLICY == "PPO":
+        model = PPO.load(model_path, env=env)
+    elif POLICY == "TD3":
+        model = TD3.load(model_path, env=env)
+    elif POLICY == "SAC":
+        model = SAC.load(model_path, env=env)
+    else:
+        raise ValueError(f"Invalid policy: {POLICY}")
 
     wins = 0
 
