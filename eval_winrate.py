@@ -1,13 +1,14 @@
-from stable_baselines3 import PPO
 from asteroid_env import AsteroidAvoidEnv
+from stable_baselines3 import TD3, PPO
 
+POLICY = "PPO"
 def evaluate_policy(model_path, episodes=100):
     env = AsteroidAvoidEnv(render_mode=None)
-    model = PPO.load(model_path, env=env)
+    model = PPO.load(model_path, env=env) if POLICY == "PPO" else TD3.load(model_path, env=env)
 
     wins = 0
 
-    for ep in range(episodes):
+    for _ in range(episodes):
         obs, info = env.reset()
         done = False
 
@@ -23,4 +24,4 @@ def evaluate_policy(model_path, episodes=100):
     print(f"Win rate over {episodes} episodes: {wins / episodes:.2f}")
 
 if __name__ == "__main__":
-    evaluate_policy("ppo_asteroid_avoid", episodes=100)
+    evaluate_policy(f"{POLICY}_asteroid_avoid", episodes=100)

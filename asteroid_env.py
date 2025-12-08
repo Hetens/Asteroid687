@@ -53,11 +53,11 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Asteroid configuration
         self.N_max = 5  # maximum number of asteroids
-        self.p_spawn = 0.15  # spawn probability per timestep (easier)
+        self.p_spawn = 0.25  # spawn probability per timestep (easier)
         self.max_lives = 3
         self.min_asteroid_radius = 0.3  # minimum asteroid size
         self.max_asteroid_radius = 0.6  # maximum asteroid size (smaller)
-        self.asteroid_fall_speed = 0.15  # base fall speed
+        self.asteroid_fall_speed = 0.1  # base fall speed
         
         # Episode configuration
         self.max_steps = 1000
@@ -94,41 +94,32 @@ class AsteroidAvoidEnv(gym.Env):
         self.clock = None
     
     def get_observation(self):
-        """
-        Construct the observation vector from the current state.
-        
-        Returns:
-            np.ndarray: Observation vector of shape (24,) with normalized values
-        """
         obs = np.zeros(24, dtype=np.float32)
         
-        # Ship state (2 values)
-        obs[0] = self.ship_x / self.W  # normalized x position
-        obs[1] = (self.ship_vx + self.max_velocity) / (2 * self.max_velocity)  # normalized velocity [0, 1]
+        # Ship state - better normalization
+        obs[0] = self.ship_x / self.W  # [0, 1]
+        obs[1] = (self.ship_vx / self.max_velocity + 1.0) / 2.0  # [-1,1] -> [0,1]
         
-        # Asteroid states (5 × 4 = 20 values)
+        # For asteroids, also add relative positions
         for i in range(self.N_max):
             idx = 2 + i * 4
             if self.asteroids[i]['present']:
-                obs[idx] = self.asteroids[i]['x'] / self.W  # x_normalized
-                obs[idx + 1] = self.asteroids[i]['y'] / self.H  # y_normalized
-                obs[idx + 2] = (self.asteroids[i]['radius'] - self.min_asteroid_radius) / (self.max_asteroid_radius - self.min_asteroid_radius)  # radius_normalized
-                obs[idx + 3] = 1.0  # present
+                # Relative x distance to ship (helps agent understand proximity)
+                relative_x = (self.asteroids[i]['x'] - self.ship_x) / self.W
+                obs[idx] = (relative_x + 1.0) / 2.0  # normalize to [0,1]
+                obs[idx + 1] = self.asteroids[i]['y'] / self.H
+                obs[idx + 2] = (self.asteroids[i]['radius'] - self.min_asteroid_radius) / \
+                            (self.max_asteroid_radius - self.min_asteroid_radius)
+                obs[idx + 3] = 1.0
             else:
-                obs[idx] = 0.0
-                obs[idx + 1] = 0.0
-                obs[idx + 2] = 0.0
-                obs[idx + 3] = 0.0  # not present
+                obs[idx:idx+4] = 0.0
         
-        # Goal progress (1 value)
         obs[22] = self.steps_remaining / self.max_steps
-
-        # Lives (1 value)
         obs[23] = self.lives / self.max_lives
         
         return obs
     
-    def reset(self, seed=None, options=None):
+    def reset(self, options=None):
         """
         Reset the environment to start a new episode.
         
@@ -139,8 +130,7 @@ class AsteroidAvoidEnv(gym.Env):
         Returns:
             tuple: (observation, info) for the initial state
         """
-        # Seed the random number generator
-        super().reset(seed=seed)
+        super().reset()
         if self.window is not None:
             self.window.fill((0, 0, 0))
         
@@ -167,6 +157,138 @@ class AsteroidAvoidEnv(gym.Env):
             self._render_frame()
         
         return observation, info
+
+    def _move_asteroids(self):
+        for asteroid in self.asteroids:
+            if asteroid['present']:
+                asteroid['y'] -= self.asteroid_fall_speed
+                # Remove asteroids that fall off the bottom
+                if asteroid['y'] + asteroid['radius'] < 0:
+                    asteroid['present'] = False
+
+    def _spawn_asteroids(self):
+        # Using Poisson distribution for random asteroid spawning
+        num_to_spawn = np.random.poisson(self.p_spawn)
+
+        for _ in range(min(num_to_spawn, 2)):
+            empty = [i for i, a in enumerate(self.asteroids) if not a['present']]
+            
+            if not empty:
+                break
+            
+            i = self.np_random.choice(empty)
+            asteroid = self.asteroids[i]
+            
+            # Variable asteroid size
+            radius = self.np_random.uniform(self.min_asteroid_radius, self.max_asteroid_radius)
+            
+            # Find a valid position for the asteroid
+            placed = False
+            for _try in range(20):
+                x = self.np_random.uniform(radius + 0.5, self.W - radius - 0.5)
+                
+                # Check spacing to ALL other asteroids
+                valid_position = True
+                for other in self.asteroids:
+                    if not other['present']:
+                        continue
+                    
+                    horizontal_gap = abs(other['x'] - x) - (other['radius'] + radius)
+                    vertical_dist = abs(other['y'] - (self.H + radius))
+                    
+                    # If asteroids are at similar height, require good horizontal spacing
+                    if vertical_dist < 2.0 and horizontal_gap < 2.0:
+                        valid_position = False
+                        break
+                    # If far apart vertically, less spacing needed
+                    elif vertical_dist >= 2.0 and horizontal_gap < 1.0:
+                        valid_position = False
+                        break
+                
+                if valid_position:
+                    placed = True
+                    break
+            
+            if placed:
+                asteroid['x'] = x
+                asteroid['y'] = self.H + radius
+                asteroid['radius'] = radius
+                asteroid['present'] = True
+
+    def _check_collision_and_calculate_reward(self):
+        collision = False
+        min_distance = float('inf')
+        danger_threshold = 3.0
+        closest_asteroid_x = None
+
+        for asteroid in self.asteroids:
+            if asteroid['present']:
+                dist = np.sqrt(
+                    (asteroid['x'] - self.ship_x) ** 2 + 
+                    (asteroid['y'] - self.ship_y) ** 2
+                )
+                edge_dist = dist - (asteroid['radius'] + self.ship_radius)
+                
+                if edge_dist < min_distance:
+                    min_distance = edge_dist
+                    closest_asteroid_x = asteroid['x']
+                
+                if edge_dist < 0:  # collision
+                    collision = True
+                    asteroid['present'] = False
+                    break
+
+        # Decrement steps remaining
+        self.steps_remaining -= 1
+        
+        # Determine reward and termination
+        if collision:
+            reward = -100.0  # big penalty
+            self.lives -= 1
+            terminated = self.lives <= 0
+        elif self.steps_remaining <= 0:
+            reward = 200.0  # win bonus
+            terminated = True
+        else:
+            # Base survival reward
+            reward = 0.1
+    
+            # STRONG penalty for being near walls -> this is to avoid the reward hacking
+            wall_distance = min(self.ship_x - self.ship_radius, 
+                            (self.W - self.ship_radius) - self.ship_x)
+            if wall_distance < 1.0:
+                wall_penalty = -2.0 * (1.0 - wall_distance)
+                reward += wall_penalty
+            
+            # Reward for being near center
+            center_x = self.W / 2.0
+            distance_from_center = abs(self.ship_x - center_x)
+            center_bonus = 0.5 * (1.0 - distance_from_center / (self.W / 2.0))
+            reward += center_bonus
+            
+            # Reward for moving (not being stationary) -> need a longer training time to see if this is needed
+            movement_reward = 0.3 * min(abs(self.ship_vx) / self.max_velocity, 1.0)
+            reward += movement_reward
+            
+            # Distance-based bonus for avoiding asteroids
+            if min_distance < danger_threshold and min_distance > 0:
+                distance_bonus = 1.5 * (min_distance / danger_threshold)
+                reward += distance_bonus
+            elif min_distance >= danger_threshold:
+                reward += 1.5
+            
+            # Bonus for moving AWAY from closest asteroid
+            if closest_asteroid_x is not None and abs(self.ship_vx) > 0.05:
+                # Reward for moving in the right direction
+                should_move_right = closest_asteroid_x > self.ship_x
+                is_moving_right = self.ship_vx > 0
+                
+                if should_move_right == is_moving_right:
+                    reward += 0.5
+        
+            terminated = False
+
+        return reward, terminated
     
     def step(self, action):
         """
@@ -203,74 +325,13 @@ class AsteroidAvoidEnv(gym.Env):
             self.ship_vx = -abs(self.ship_vx) * 0.5  # bounce with energy loss
         
         # Move asteroids down
-        for asteroid in self.asteroids:
-            if asteroid['present']:
-                asteroid['y'] -= self.asteroid_fall_speed
-                # Remove asteroids that fall off the bottom
-                if asteroid['y'] + asteroid['radius'] < 0:
-                    asteroid['present'] = False
+        self._move_asteroids()
+
+        # Spawn new asteroids
+        self._spawn_asteroids()
         
-        # Spawn new asteroid with probability p_spawn
-        if self.np_random.random() < self.p_spawn:
-            # Find first empty slot
-            for asteroid in self.asteroids:
-                if not asteroid['present']:
-                    # Random size within limits
-                    radius = self.np_random.uniform(
-                        self.min_asteroid_radius, 
-                        self.max_asteroid_radius
-                    )
-                    asteroid['x'] = self.np_random.uniform(radius, self.W - radius)
-                    asteroid['y'] = self.H + radius  # spawn above screen
-                    asteroid['radius'] = radius
-                    asteroid['present'] = True
-                    break
-        
-        # Check for collision and calculate minimum distance to asteroids
-        collision = False
-        min_distance = float('inf')
-        danger_threshold = 3.0  # distance at which we start caring about proximity
-        
-        for asteroid in self.asteroids:
-            if asteroid['present']:
-                dist = np.sqrt(
-                    (asteroid['x'] - self.ship_x) ** 2 + 
-                    (asteroid['y'] - self.ship_y) ** 2
-                )
-                # Account for radii to get edge-to-edge distance
-                edge_dist = dist - (asteroid['radius'] + self.ship_radius)
-                min_distance = min(min_distance, edge_dist)
-                
-                if edge_dist < 0:  # collision
-                    collision = True
-                    asteroid['present'] = False
-                    break
-        
-        # Decrement steps remaining
-        self.steps_remaining -= 1
-        
-        # Determine reward and termination
-        if collision:
-            reward = -30.0  # Reduced penalty
-            self.lives -= 1
-            terminated = self.lives <= 0
-        elif self.steps_remaining <= 0:
-            reward = 50.0  # win bonus
-            terminated = True
-        else:
-            # Base survival reward - must be meaningful!
-            reward = 1.0
-            
-            # Distance-based bonus: reward for staying away from asteroids
-            if min_distance < danger_threshold and min_distance > 0:
-                # Closer = less bonus (scales from 0 to 1 based on distance)
-                distance_bonus = 1.0 * (min_distance / danger_threshold)
-                reward += distance_bonus
-            elif min_distance >= danger_threshold:
-                # Safe distance = full bonus
-                reward += 1.0
-            
-            terminated = False
+        # Check for collision and calculate reward
+        reward, terminated = self._check_collision_and_calculate_reward()
         
         truncated = False
         observation = self.get_observation()

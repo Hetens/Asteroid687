@@ -1,22 +1,17 @@
 """
-Script to play/visualize a trained PPO policy on the Asteroid Avoid Environment.
+Script to play/visualize a trained policy on the Asteroid Avoid Environment.
 """
 
 import os
 import time
-from stable_baselines3 import PPO
+from stable_baselines3 import TD3, PPO
 from asteroid_env import AsteroidAvoidEnv
 
-
+POLICY = "TD3"
 def main():
     # Check for model file
     model_paths = [
-        "ppo_asteroid_avoid.zip",
-        "ppo_asteroid_avoid",
-        "./models/ppo_asteroid_avoid_final.zip",
-        "./models/ppo_asteroid_avoid_final",
-        "./models/best_model.zip",
-        "./models/best_model",
+        f"{POLICY}_asteroid_avoid.zip",
     ]
     
     model_path = None
@@ -34,7 +29,7 @@ def main():
     print(f"Loading model from: {model_path}")
     
     env = AsteroidAvoidEnv(render_mode="human")
-    model = PPO.load(model_path, env=env)
+    model = PPO.load(model_path, env=env) if POLICY == "PPO" else TD3.load(model_path, env=env)
     
     print("\n" + "="*50)
     print("Playing trained policy...")
