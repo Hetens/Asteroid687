@@ -103,7 +103,7 @@ def plot_training_results(logger, log_dir, loss_label='Loss'):
     # Win rate over time
     plt.subplot(1, 3, 3)
     window = 100
-    win_threshold = 1500 
+    win_threshold = 2000 
     win_rates = []
     for i in range(window, len(logger.returns)):
         recent = logger.returns[i-window:i]

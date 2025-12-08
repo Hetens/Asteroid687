@@ -7,7 +7,7 @@ import time
 from stable_baselines3 import TD3, PPO, SAC
 from asteroid_env import AsteroidAvoidEnv
 
-POLICY = "TD3"
+POLICY = "PPO"
 def main():
     # Check for model file
     model_paths = [
@@ -22,7 +22,7 @@ def main():
     
     if model_path is None:
         print("Error: No trained model found!")
-        print("Please run train_sb3_baseline.py first to train a model.")
+        print(f"Please run train_{POLICY}_sb3.py first to train a model.")
         print(f"Searched paths: {model_paths}")
         return
     
