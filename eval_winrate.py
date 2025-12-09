@@ -1,7 +1,7 @@
 from asteroid_env import AsteroidAvoidEnv
 from stable_baselines3 import TD3, PPO, SAC
 
-POLICY = "TD3"
+POLICY = "SAC"
 def evaluate_policy(model_path, episodes=100):
     env = AsteroidAvoidEnv(render_mode=None)
     if POLICY == "PPO":

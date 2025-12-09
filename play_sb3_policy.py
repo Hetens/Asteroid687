@@ -7,7 +7,7 @@ import time
 from stable_baselines3 import TD3, PPO, SAC
 from asteroid_env import AsteroidAvoidEnv
 
-POLICY = "TD3"
+POLICY = "SAC"
 def main():
     # Check for model file
     model_paths = [

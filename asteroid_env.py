@@ -53,7 +53,7 @@ class AsteroidAvoidEnv(gym.Env):
         
         # Asteroid configuration
         self.N_max = 5  # maximum number of asteroids
-        self.p_spawn = 0.25  # spawn probability per timestep (easier)
+        self.p_spawn = 0.35  # spawn probability per timestep (easier)
         self.max_lives = 3
         self.min_asteroid_radius = 0.3  # minimum asteroid size
         self.max_asteroid_radius = 0.6  # maximum asteroid size (smaller)
@@ -265,10 +265,6 @@ class AsteroidAvoidEnv(gym.Env):
             distance_from_center = abs(self.ship_x - center_x)
             center_bonus = 0.5 * (1.0 - distance_from_center / (self.W / 2.0))
             reward += center_bonus
-            
-            # # Reward for moving (not being stationary) -> need a longer training time to see if this is needed
-            # movement_reward = 0.3 * min(abs(self.ship_vx) / self.max_velocity, 1.0)
-            # reward += movement_reward
             
             # Distance-based bonus for avoiding asteroids
             if min_distance < danger_threshold and min_distance > 0:

@@ -1,10 +1,10 @@
-Training Run: 2025-12-08 18:55:24
+Training Run: 2025-12-08 20:01:37
 ==================================================
 
 PPO Hyperparameters:
 Number of parallel environments: 16
 ------------------------------
-total_timesteps: 10000000
+total_timesteps: 25000000
 learning_rate: 0.0003
 n_steps: 1024
 batch_size: 2048
