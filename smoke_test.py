@@ -1,4 +1,4 @@
-from asteroid_env import AsteroidAvoidEnv
+from asteroid_env_1 import AsteroidAvoidEnv
 
 def run_smoke_test():
     print("Running headless smoke test...")
