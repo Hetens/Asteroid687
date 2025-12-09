@@ -47,7 +47,7 @@ class SimpleLogger(BaseCallback):
                     recent_mean = np.mean(self.returns[-100:])
                     recent_max = max(self.returns[-100:])
                     # Calculate win rate
-                    recent_wins = sum(1 for r in self.returns[-100:] if r > 2000)
+                    recent_wins = sum(1 for r in self.returns[-100:] if r > 1500)
                     win_rate = recent_wins / min(100, len(self.returns[-100:]))
                     print(
                         f"Ep {self.last_ep_count}: "
@@ -103,7 +103,7 @@ def plot_training_results(logger, log_dir, loss_label='Loss'):
     # Win rate over time
     plt.subplot(1, 3, 3)
     window = 100
-    win_threshold = 2000 
+    win_threshold = 1500 
     win_rates = []
     for i in range(window, len(logger.returns)):
         recent = logger.returns[i-window:i]
@@ -126,7 +126,7 @@ def print_training_summary(logger, policy_name):
     print(f"Episodes: {len(logger.returns)}")
     
     if len(logger.returns) >= 100:
-        win_threshold = 2000
+        win_threshold = 1500
         final_mean = np.mean(logger.returns[-100:])
         final_wins = sum(1 for r in logger.returns[-100:] if r > win_threshold)
         final_win_rate = final_wins / 100
