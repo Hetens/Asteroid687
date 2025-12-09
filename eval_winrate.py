@@ -28,7 +28,7 @@ def evaluate_policy(model_path, episodes=100):
             wins += 1
 
     env.close()
-    print(f"Win rate over {episodes} episodes: {wins / episodes:.2f}")
+    print(f"Win rate for {POLICY} over {episodes} episodes: {wins / episodes:.2f}")
 
 if __name__ == "__main__":
     evaluate_policy(f"{POLICY}_asteroid_avoid", episodes=100)

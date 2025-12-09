@@ -15,7 +15,7 @@ POLICY = "PPO"
 N_ENVS = 16
 
 HYPERPARAMS = {
-    "total_timesteps": 25_000_000,
+    "total_timesteps": 10_000_000,
     "learning_rate": 3e-4,
     "n_steps": 1024,        
     "batch_size": 2048,     
