@@ -4,3 +4,5 @@ gymnasium
 stable_baselines3
 tqdm
 rich
+torch
+matplotlib
