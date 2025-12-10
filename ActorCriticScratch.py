@@ -3,7 +3,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from asteroid_env_1 import AsteroidAvoidEnv
+from asteroid_en import AsteroidAvoidEnv
 import os
 
 
@@ -174,7 +174,7 @@ def train():
         gamma=0.99
     )
     
-    num_episodes = 30000
+    num_episodes = 500
     
     # Tracking
     episode_rewards = []

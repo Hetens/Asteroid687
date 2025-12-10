@@ -3,8 +3,8 @@ Run trained TD Actor-Critic policy in visual mode
 """
 import torch
 import numpy as np
-from asteroid_env_1 import AsteroidAvoidEnv
-from improved_td_scratch import ActorCriticAgent
+from asteroid_env import AsteroidAvoidEnv
+from ActorCriticScratch import ActorCriticAgent
 
 
 def run_policy(policy_path, num_episodes=5):
