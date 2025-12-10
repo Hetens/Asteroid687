@@ -1,0 +1,18 @@
+Training Run: 2025-12-08 20:01:37
+==================================================
+
+PPO Hyperparameters:
+Number of parallel environments: 16
+------------------------------
+total_timesteps: 25000000
+learning_rate: 0.0003
+n_steps: 1024
+batch_size: 2048
+n_epochs: 20
+gamma: 0.99
+gae_lambda: 0.95
+clip_range: 0.2
+ent_coef: 0.01
+vf_coef: 0.5
+max_grad_norm: 0.5
+policy: MlpPolicy

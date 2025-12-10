@@ -1,4 +1,0 @@
-1. Plot for lower learning rate 1e-5, 1e-4
-2. Plot for higher learning rate 1e-4, 1e-3
-3. Plot for lower learning rate 1e-5, 1e-4 but now more episodes 2000 did not work with nn for 32x8
-4. Now doing lower learning rate 1e-5, 1e-4 but now more episodes 2000 did work with nn for 64x64.
