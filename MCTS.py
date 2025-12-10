@@ -117,7 +117,7 @@ Q_mcts = defaultdict(lambda: np.zeros(num_actions))
 N_mcts = defaultdict(lambda: np.zeros(num_actions))
 
 
-def uct_select(state):
+def uct_select(state, c_param):
     state_tuple = tuple(state)
     best_action = -1
     best_score = -float('inf')
@@ -133,7 +133,6 @@ def uct_select(state):
         q_val = Q_mcts[state_tuple][a]
         # UCT formula: Q(s,a) + C * sqrt(ln(N(s)) / N(s,a))
         # Increasing C to match reward scale (approx -10 to 10)
-        c_param = 15.0
         exploration = c_param * np.sqrt(np.log(N_s) / N_mcts[state_tuple][a])
         score = q_val + exploration
         
@@ -144,7 +143,7 @@ def uct_select(state):
     return best_action
 
 
-def mcts_iteration():
+def mcts_iteration(c_param, max_depth):
     # 1. Selection & Expansion
     # Start at a random valid state or a fixed root?
     # To solve the whole grid, starting random is good (like solving all subgames)
@@ -153,7 +152,6 @@ def mcts_iteration():
     
     path = [] # Stores (state, action, reward)
     depth = 0
-    max_depth = 25 # Prevent infinite loops in cycles
     
     # Selection: Traverse until we hit a terminal or an unexpanded node
     while depth < max_depth:
@@ -174,7 +172,7 @@ def mcts_iteration():
             break # Go to rollout
         else:
             # All actions tried, use UCT to go deeper
-            action = uct_select(curr)
+            action = uct_select(curr, c_param)
             next_state, reward = reachable_states(curr, action)
             path.append((curr, action, reward))
             curr = next_state
@@ -269,7 +267,7 @@ def evaluate_policy(num_eval_episodes=10):
         
     return total_return / num_eval_episodes
 
-def run_experiment_mcts():
+def run_experiment_mcts(c_param, max_depth, num_episodes):
     # Reset globals for new experiment
     Q_mcts.clear()
     N_mcts.clear()
@@ -278,10 +276,12 @@ def run_experiment_mcts():
     avg_returns = []
     episode_numbers = []
     
+    print(f"Starting MCTS Experiment with c={c_param}, d={max_depth}, episodes={num_episodes}...")
+
     # Iterations corresponding to "episodes" in previous code
     # Since MCTS is one trace per iteration, it's comparable
-    for i in range(1, NUM_EPISODES + 1):
-        mcts_iteration()
+    for i in range(1, num_episodes + 1):
+        mcts_iteration(c_param, max_depth)
         
         if i % 250 == 0:
             # Convert default dict Q to numpy array for MSE calc
@@ -299,7 +299,7 @@ def run_experiment_mcts():
             
             episode_numbers.append(i)
             
-        if i % 100 == 0:
+        if i % 10000 == 0:
             print(f"MCTS Iteration: {i}")
 
     # Build final V and Policy
@@ -314,69 +314,86 @@ def run_experiment_mcts():
             
     return episode_numbers, mse_values, avg_returns, final_values, final_policy
 
-results = {}
+results_list = {}
 
-print("Starting MCTS Experiment...")
-episodes, mse, avg_returns, values, policy = run_experiment_mcts()
+hyperparameters = [
+    {"c_param": 0.1, "max_depth": 25, "episodes": 100000, "name": "c0.1_d25"},
+    {"c_param": 1.0, "max_depth": 25, "episodes": 100000, "name": "c1.0_d25"},
+    {"c_param": 5.0, "max_depth": 25, "episodes": 100000, "name": "c5.0_d25"},
+    {"c_param": 15.0, "max_depth": 25, "episodes": 100000, "name": "c15.0_d25"},
+    {"c_param": 15.0, "max_depth": 50, "episodes": 100000, "name": "c15.0_d50"},
+]
 
-name = "MCTS"
+results_txt_file = "results/MCTS_Hyperparameter_Study.txt"
+with open(results_txt_file, 'w', encoding='utf-8') as f:
+    f.write("MCTS Hyperparameter Study Results\n")
+    f.write("=================================\n\n")
 
-# SAVING PLOTS OF MSE FOR EACH RUN -----------------
-plt.figure() 
-plt.title(f"{name} MSE")
-plt.plot(episodes, mse)
-plt.xlabel("Iterations")
-plt.ylabel("MSE")
-plt.savefig(f"plots/{name}_mse.png")
-plt.close() 
-
-# SAVING PLOTS OF AVERAGE RETURN -----------------
-plt.figure() 
-plt.title(f"{name} Average Return")
-plt.plot(episodes, avg_returns)
-plt.xlabel("Iterations")
-plt.ylabel("Average Return")
-plt.savefig(f"plots/{name}_return.png")
-plt.close() 
-
-#PRINTING FOR EACH RUN -------
-print(f"Algorithm {name} for {NUM_EPISODES} iterations.")
-print("\nFinal Values:")
-print(values)
-print("\nOptimal Policy (Best Actions):")
-arrow_map = {0: '→', 1: '←', 2: '↓', 3: '↑'}
-arrow_grid = np.full((grid_size, grid_size), ' ', dtype='<U2')
-
-for i in range(grid_size):
-    for j in range(grid_size):
-        if [i, j] in furniture:
-            arrow_grid[i, j] = 'x'  
-        elif [i, j] in terminal_states:
-            arrow_grid[i, j] = 'T'
-        else:
-            # Check if visited
-            if np.sum(N_mcts[(i,j)]) > 0:
-                arrow_grid[i, j] = arrow_map[int(np.argmax(Q_mcts[(i, j)]))]
-            else:
-                arrow_grid[i, j] = '?'
-
-print("\nPolicy Arrows:")
-for row in arrow_grid:
-    print(' '.join(row))
-
-result_filename = f"results/{name}.txt"
-with open(result_filename, 'w', encoding='utf-8') as f:
-    f.write(f"Results for: {name}\n")
-    f.write("\n\n")
-    f.write("Final Values (v_i):\n")
-    f.write(np.array2string(values, precision=4, suppress_small=True))
-    f.write("\n\n")
-
-    f.write("Policy Arrows:\n")
-    for row in arrow_grid:
-        f.write(' '.join(row) + '\n')
+for params in hyperparameters:
+    c_p = params["c_param"]
+    d_m = params["max_depth"]
+    ep = params["episodes"]
+    name = f"MCTS_{params['name']}"
     
-    f.write(f"\nFinal MSE: {mse[-1]:.4f}\n")
-    f.write(f"Final Avg Return: {avg_returns[-1]:.4f}\n")
+    episodes, mse, avg_returns, values, policy = run_experiment_mcts(c_p, d_m, ep)
+    
+    # SAVING PLOTS OF MSE FOR EACH RUN -----------------
+    plt.figure() 
+    plt.title(f"{name} MSE (c={c_p}, d={d_m})")
+    plt.plot(episodes, mse)
+    plt.xlabel("Iterations")
+    plt.ylabel("MSE")
+    plt.savefig(f"plots/{name}_mse.png")
+    plt.close() 
 
-print(f"Saved results to {result_filename}")
+    # SAVING PLOTS OF AVERAGE RETURN -----------------
+    plt.figure() 
+    plt.title(f"{name} Average Return (c={c_p}, d={d_m})")
+    plt.plot(episodes, avg_returns)
+    plt.xlabel("Iterations")
+    plt.ylabel("Average Return")
+    plt.savefig(f"plots/{name}_return.png")
+    plt.close() 
+
+    #PRINTING FOR EACH RUN -------
+    print(f"Algorithm {name} finished.")
+    print("\nFinal Values:")
+    print(values)
+    
+    arrow_map = {0: '→', 1: '←', 2: '↓', 3: '↑'}
+    arrow_grid = np.full((grid_size, grid_size), ' ', dtype='<U2')
+
+    for i in range(grid_size):
+        for j in range(grid_size):
+            if [i, j] in furniture:
+                arrow_grid[i, j] = 'x'  
+            elif [i, j] in terminal_states:
+                arrow_grid[i, j] = 'T'
+            else:
+                # Check if visited
+                if np.sum(N_mcts[(i,j)]) > 0:
+                    arrow_grid[i, j] = arrow_map[int(np.argmax(Q_mcts[(i, j)]))]
+                else:
+                    arrow_grid[i, j] = '?'
+
+    print("\nPolicy Arrows:")
+    for row in arrow_grid:
+        print(' '.join(row))
+
+    with open(results_txt_file, 'a', encoding='utf-8') as f:
+        f.write(f"Experiment: {name}\n")
+        f.write(f"Parameters: C={c_p}, MaxDepth={d_m}, Episodes={ep}\n")
+        f.write("-" * 30 + "\n")
+        f.write("Final Values (v_i):\n")
+        f.write(np.array2string(values, precision=4, suppress_small=True))
+        f.write("\n\n")
+
+        f.write("Policy Arrows:\n")
+        for row in arrow_grid:
+            f.write(' '.join(row) + '\n')
+        
+        f.write(f"\nFinal MSE: {mse[-1]:.4f}\n")
+        f.write(f"Final Avg Return: {avg_returns[-1]:.4f}\n")
+        f.write("\n" + "="*50 + "\n\n")
+
+print(f"All experiments finished. Results saved to {results_txt_file} and plots/ folder.")
