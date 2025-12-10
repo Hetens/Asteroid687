@@ -1,7 +1,0 @@
-Parameters: a_theta=0.01, a_w=0.05
-----------------------------------------
-       D       D       D       D       D
-       R       R       R       R       D
-       U       N       N       N       D
-       U       U       N       R       D
-       U       R       R       R       G

@@ -1,5 +1,0 @@
-       R       R       R       D       D
-       U       R       R       D       D
-       U       U       O       R       D
-       U       U       O       R       D
-       U       L       W       R       G
